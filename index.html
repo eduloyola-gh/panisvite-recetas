@@ -112,7 +112,7 @@ table{width:100%;border-collapse:collapse} th,td{padding:10px;border-bottom:1px 
 </div>
 <script>
 if('serviceWorker' in navigator){ window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./service-worker.js').catch(()=>{}); }); }
-const VERSION='v2.3';
+const VERSION='v2.3.1';
 const WATER_EQ_DEFAULTS={ 'agua':100,'leche':87,'huevo':75,'yogur':85,'mantequilla':16,'aceite':0,'miel':17 };
 const db=new Dexie('panaderia_v23'); db.version(1).stores({ recipes:'++id,name,author,date,cats,createdAt', ingredientsDict:'name' });
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
