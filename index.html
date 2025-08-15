@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PanIsVite — Recetas (% panadero)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --ink:#e5e7eb; --paper:#ffffff; }
+html,body{height:100%} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Helvetica,Arial,sans-serif;background:#0f172a;color:var(--ink)}
+.container{max-width:1100px;margin:0 auto;padding:24px}
+.app-title{font-size:clamp(22px,4vw,32px);font-weight:800}
+.version{margin-left:8px;font-size:12px;color:#0b1222;background:#86efac;border-radius:999px;padding:3px 8px}
+.card{background:rgba(17,24,39,.7);backdrop-filter:blur(6px);border:1px solid rgba(148,163,184,.2);border-radius:18px;padding:16px;margin:12px 0}
+.row{display:flex;gap:12px;flex-wrap:wrap}.col{flex:1 1 240px;min-width:220px}
+label{display:block;font-size:12px;text-transform:uppercase;color:var(--muted);margin:6px 0 4px}
+input,textarea,select{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,.25);background:#0b1222;color:var(--ink);outline:none}
+textarea{min-height:120px;resize:vertical}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(148,163,184,.25);background:#0b1222;padding:10px 14px;border-radius:12px;color:var(--ink);cursor:pointer}
+.btn.primary{background:linear-gradient(90deg,#22c55e,#16a34a);border:none}
+.btn.danger{background:linear-gradient(90deg,#ef4444,#b91c1c);border:none}
+table{width:100%;border-collapse:collapse} th,td{padding:10px;border-bottom:1px solid rgba(148,163,184,.2);text-align:left;font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.accent{color:#86efac}
+@media print { .btn, .right, #results, #btn-pdf, #btn-print, #btn-save, #btn-clear, #btn-export-json, #btn-help, label[for="import-json"] { display:none !important; } .container{padding:0} }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/dexie@4.0.7/dist/dexie.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+<div class="container">
+  <div class="row" style="align-items:center;gap:10px">
+    <div class="app-title">PanIsVite · Recetas basadas en % panadero <span class="version">v2.3</span></div>
+    <div class="right">
+      <button class="btn" id="btn-export-json">Exportar</button>
+      <label class="btn" for="import-json">Importar <input type="file" id="import-json" accept="application/json" style="display:none"></label>
+      <button class="btn" id="btn-help">Ayuda</button>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <div class="col"><label>Nombre receta</label><input id="rec-name"></div>
+        <div class="col"><label>Autor</label><input id="rec-author"></div>
+        <div class="col"><label>Fecha</label><input id="rec-date" type="date"></div>
+      </div>
+      <div class="row">
+        <div class="col"><label>Categorías / etiquetas (coma)</label><input id="rec-cats"></div>
+        <div class="col"><label>Rendimiento (informativo)</label><div class="row"><input id="yield-pcs" type="number" placeholder="Piezas"><input id="yield-weight" type="number" placeholder="Peso pieza (g)"></div></div>
+      </div>
+      <div class="card">
+        <label>Ingredientes</label>
+        <datalist id="ing-suggestions"></datalist>
+        <table id="tbl-ingredients"><thead>
+          <tr><th>Nombre</th><th>Cantidad (g)</th><th>¿Harina?</th><th>% agua-eq</th><th>% panadero</th><th>Observaciones</th><th></th></tr>
+        </thead><tbody></tbody>
+        <tfoot><tr><td colspan="7"><button class="btn" id="btn-add-ing">Añadir ingrediente</button></td></tr></tfoot>
+        </table>
+      </div>
+      <div class="row">
+        <div class="col">
+          <div class="card">
+            <div class="row"><div><strong>Harina total:</strong> <span id="total-flour" class="accent">0 g</span></div><div class="right"><strong>Masa total:</strong> <span id="total-dough" class="accent">0 g</span></div></div>
+            <div>Hidratación = (agua equivalente / harina) × 100 · <strong><span id="hydration" class="accent">0 %</span></strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><label>% Panadero (resumen)</label><div id="percentages" class="chips"></div></div>
+      <div class="card">
+        <label>Prefermentos</label>
+        <table id="tbl-pref"><thead><tr><th>Nombre</th><th>Harina (g)</th><th>Agua (g)</th><th>Levadura (g)</th><th>Notas</th><th></th></tr></thead><tbody></tbody>
+        <tfoot><tr><td colspan="6"><button class="btn" id="btn-add-pref">Añadir prefermento</button></td></tr></tfoot></table>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <button class="btn primary" id="btn-save">Guardar</button>
+          <button class="btn" id="btn-clear">Nueva</button>
+          <button class="btn" id="btn-dup">Duplicar</button>
+          <button class="btn" id="btn-pdf">PDF</button>
+          <button class="btn" id="btn-print">Imprimir</button>
+        </div>
+        <div>
+          <label>Escalar por ingrediente</label>
+          <select id="scale-by-ing"></select>
+          <input id="scale-grams" type="number" placeholder="g destino">
+          <button class="btn" id="btn-scale-by-ing">Escalar</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col"><label>Escalar por masa total (g)</label><div class="row"><input id="scale-total" type="number"><button class="btn" id="btn-scale-total">Escalar masa total</button></div></div>
+        <div class="col"><label>Escalar por piezas</label><div class="row"><input id="scale-pcs" type="number" placeholder="Piezas"><input id="scale-weight" type="number" placeholder="Peso pieza (g)"><button class="btn" id="btn-scale-pieces">Escalar por piezas</button></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="col"><label>Búsqueda</label><input id="q" placeholder="Autor, nombre, ingrediente o categoría..."></div>
+        <div class="col"><label>&nbsp;</label><button class="btn" id="btn-search">Buscar</button><button class="btn" id="btn-all">Ver todas</button></div>
+      </div>
+      <div id="results"></div>
+      <div class="row"><div class="col"><label>Backup automático</label>
+        <div class="row"><select id="backup-mode"><option value="off">Apagado</option><option value="local">Guardar copia en este navegador</option><option value="download">Descargar JSON en cada guardado</option></select><button class="btn" id="btn-backup-now">Descargar backup</button></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+<script>
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./service-worker.js').catch(()=>{}); }); }
+const VERSION='v2.3';
+const WATER_EQ_DEFAULTS={ 'agua':100,'leche':87,'huevo':75,'yogur':85,'mantequilla':16,'aceite':0,'miel':17 };
+const db=new Dexie('panaderia_v23'); db.version(1).stores({ recipes:'++id,name,author,date,cats,createdAt', ingredientsDict:'name' });
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const todayISO=()=>{const d=new Date();const z=d.getTimezoneOffset();const d2=new Date(d-z*60000);return d2.toISOString().slice(0,10);}
+const num=x=>{const n=parseFloat(x);return isNaN(n)?0:n;}
+const ceilTo=(x,step)=>Math.ceil(x/step)*step;
+const roundQty=g=>g>=50?Math.ceil(g):ceilTo(g,0.1);
+const fmtQty=g=>g>=50?String(Math.ceil(g)):(ceilTo(g,0.1)).toFixed(1).replace('.',',');
+const fmt=g=>{const n=Math.round(g*100)/100;return(''+n).replace('.',',');}
+const splitCats=s=>(s||'').split(',').map(t=>t.trim()).filter(Boolean);
+function suggestWaterEq(name){ const n=(name||'').toLowerCase(); for(const k in WATER_EQ_DEFAULTS){ if(n.includes(k)) return WATER_EQ_DEFAULTS[k]; } return 0; }
+function addIngredientRow(data={name:'',grams:'',flour:false,waterEq:'',notes:''}){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
+    <td><input class="ing-name" list="ing-suggestions" value="${data.name?String(data.name).replace(/"/g,'&quot;'):''}"></td>
+    <td><input class="ing-grams" type="number" step="0.01" value="${(data.grams!==''&&data.grams!=null)?data.grams:''}"></td>
+    <td style="text-align:center"><input class="ing-flour" type="checkbox" ${data.flour?'checked':''}></td>
+    <td><input class="ing-water-eq" type="number" step="0.1" placeholder="0–100" value="${(data.waterEq!==''&&data.waterEq!=null)?data.waterEq:''}"></td>
+    <td class="ing-bakers"></td>
+    <td><input class="ing-notes" value="${data.notes?String(data.notes).replace(/"/g,'&quot;'):''}"></td>
+    <td><button class="btn danger btn-del" type="button">✕</button></td>`;
+  $('#tbl-ingredients tbody').appendChild(tr);
+  tr.querySelector('.ing-grams').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addIngredientRow();$('#tbl-ingredients tbody tr:last-child .ing-name').focus();}});
+  tr.querySelector('.ing-grams').addEventListener('blur',e=>{const v=num(e.target.value||'0');e.target.value=roundQty(v);refreshMetrics();});
+  tr.querySelector('.ing-name').addEventListener('blur',e=>{const input=tr.querySelector('.ing-water-eq'); if(!input.value){input.value=suggestWaterEq(e.target.value);} refreshMetrics();});
+  requestAnimationFrame(refreshMetrics);
+}
+function readIngredients(){
+  const rows=$$('#tbl-ingredients tbody tr');
+  return rows.map(r=>({ name:(r.querySelector('.ing-name')?.value||'').trim(), grams:num((r.querySelector('.ing-grams')?.value||'').trim()),
+    flour:!!(r.querySelector('.ing-flour')?.checked),
+    waterEq:(()=>{const v=r.querySelector('.ing-water-eq')?.value; return v!==''?num(v):suggestWaterEq(r.querySelector('.ing-name')?.value||'');})(),
+    notes:(r.querySelector('.ing-notes')?.value||'').trim()
+  })).filter(i=>i.name);
+}
+function writeIngredients(ings){ const tbody=$('#tbl-ingredients tbody'); tbody.innerHTML=''; for(const ing of ings){ ing.grams=roundQty(num(ing.grams||0)); addIngredientRow(ing);} refreshMetrics(); }
+function addPrefRow(data={name:'',flour:'',water:'',yeast:'',notes:''}){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
+    <td><input class="pref-name" value="${data.name?String(data.name).replace(/"/g,'&quot;'):''}"></td>
+    <td><input class="pref-flour" type="number" step="0.01" value="${(data.flour!==''&&data.flour!=null)?data.flour:''}"></td>
+    <td><input class="pref-water" type="number" step="0.01" value="${(data.water!==''&&data.water!=null)?data.water:''}"></td>
+    <td><input class="pref-yeast" type="number" step="0.01" value="${(data.yeast!==''&&data.yeast!=null)?data.yeast:''}"></td>
+    <td><input class="pref-notes" value="${data.notes?String(data.notes).replace(/"/g,'&quot;'):''}"></td>
+    <td><button class="btn danger btn-del-pref" type="button">✕</button></td>`;
+  $('#tbl-pref tbody').appendChild(tr); requestAnimationFrame(refreshMetrics);
+}
+function writePref(prefs){ const tbody=$('#tbl-pref tbody'); tbody.innerHTML=''; for(const p of prefs){ addPrefRow(p);} refreshMetrics(); }
+function refreshScaleSelect(){ const sel=$('#scale-by-ing'); sel.innerHTML=''; for(const ing of readIngredients()){ const opt=document.createElement('option'); opt.value=ing.name; opt.textContent=ing.name; sel.appendChild(opt);} }
+function computeTotals(){
+  const ings=readIngredients(); const prefs=readPref();
+  const prefFlour=prefs.reduce((a,b)=>a+(b.flour||0),0);
+  const prefWater=prefs.reduce((a,b)=>a+(b.water||0),0);
+  const flourTotal=ings.filter(i=>i.flour).reduce((a,b)=>a+b.grams,0)+prefFlour;
+  const doughIngs=ings.reduce((a,b)=>a+b.grams,0);
+  const doughPrefs=prefs.reduce((a,b)=>a+(b.flour||0)+(b.water||0)+(b.yeast||0),0);
+  const doughTotal=doughIngs+doughPrefs;
+  const waterEqIngs=ings.reduce((a,b)=>a+(b.grams||0)*((b.waterEq||0)/100),0);
+  const waterTotalEq=waterEqIngs+prefWater;
+  const hydration=flourTotal>0?(waterTotalEq/flourTotal)*100:0;
+  return {ings,prefs,flourTotal,doughTotal,hydration};
+}
+function refreshMetrics(){
+  const {ings,flourTotal,doughTotal,hydration}=computeTotals();
+  $('#total-flour').textContent=fmt(flourTotal)+' g'; $('#total-dough').textContent=fmt(doughTotal)+' g'; $('#hydration').textContent=fmt(hydration)+' %';
+  // Columna % panadero
+  const rows=$$('#tbl-ingredients tbody tr');
+  rows.forEach((tr,idx)=>{const cell=tr.querySelector('.ing-bakers'); const ing=ings[idx]; const pct=(flourTotal>0&&ing)?(ing.grams/flourTotal)*100:0; if(cell) cell.textContent=fmt(pct)+' %';});
+  // Chips
+  const chips=$('#percentages'); chips.innerHTML=''; if(flourTotal>0){ for(const i of ings){ const pct=(i.grams/flourTotal)*100; const el=document.createElement('span'); el.className='tag'; el.textContent=i.name+': '+fmt(pct)+' %'+(i.flour?' (harina)':''); chips.appendChild(el);} }
+  refreshScaleSelect(); updateSuggestions();
+}
+function readPref(){ const rows=$$('#tbl-pref tbody tr'); return rows.map(r=>({ name:(r.querySelector('.pref-name')?.value||'').trim(), flour:num((r.querySelector('.pref-flour')?.value||'').trim()), water:num((r.querySelector('.pref-water')?.value||'').trim()), yeast:num((r.querySelector('.pref-yeast')?.value||'').trim()), notes:(r.querySelector('.pref-notes')?.value||'').trim()})).filter(p=>p.name||p.flour||p.water||p.yeast);}
+async function updateSuggestions(){ const names=new Set(); readIngredients().forEach(i=>{if(i.name)names.add(i.name)}); const dict=await db.ingredientsDict.toArray(); dict.forEach(d=>names.add(d.name)); const dl=$('#ing-suggestions'); dl.innerHTML=''; Array.from(names).sort().slice(0,200).forEach(n=>{ const opt=document.createElement('option'); opt.value=n; dl.appendChild(opt); }); }
+async function rememberIngredient(name){ if(!name) return; try{ await db.ingredientsDict.put({name}); }catch(e){} }
+async function saveRecipe(duplicate=false){ const ings=readIngredients(); const prefs=readPref(); const rec={ name:$('#rec-name').value.trim(), author:$('#rec-author').value.trim(), date:$('#rec-date').value||todayISO(), cats:splitCats($('#rec-cats').value), yield:{ pcs:num($('#yield-pcs').value||'0'), weight:num($('#yield-weight').value||'0') }, ingredients:ings, preferments:prefs, steps:'', photos:[], createdAt:new Date().toISOString(), version:VERSION }; if(!rec.name){alert('Pon un nombre');return;} for(const i of ings){ await rememberIngredient(i.name);} const id=await db.recipes.put(rec); if(!duplicate){ currentLoadedId=id;} await search(); doBackup(rec); alert('Receta guardada.'); return id; }
+async function loadRecipe(id){ const rec=await db.recipes.get(id); if(!rec) return; $('#rec-name').value=rec.name||''; $('#rec-author').value=rec.author||''; $('#rec-date').value=(rec.date||todayISO()).slice(0,10); $('#rec-cats').value=(rec.cats||[]).join(', '); $('#yield-pcs').value=rec.yield?.pcs||''; $('#yield-weight').value=rec.yield?.weight||''; writeIngredients(rec.ingredients||[]); writePref(rec.preferments||[]); currentLoadedId=id; }
+async function removeRecipe(id){ if(!confirm('¿Eliminar?')) return; await db.recipes.delete(id); await search(); }
+async function search(){ const q=$('#q').value.trim().toLowerCase(); let rows=await db.recipes.toArray(); if(q){ rows=rows.filter(r=> (r.author||'').toLowerCase().includes(q)||(r.name||'').toLowerCase().includes(q)||(r.cats||[]).some(c=>(c||'').toLowerCase().includes(q))||(r.ingredients||[]).some(i=>(i.name||'').toLowerCase().includes(q)) ); } renderResults(rows); }
+function renderResults(rows){ const box=$('#results'); if(rows.length===0){ box.innerHTML='<div class="muted">Sin resultados.</div>'; return;} const list=document.createElement('div'); rows.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); rows.forEach(r=>{ const card=document.createElement('div'); card.className='card'; card.innerHTML=`<div class="row"><div><div style="font-weight:700">${r.name}</div><div class="small">${r.author||'—'} · ${(r.date||'').slice(0,10)} · <span class="accent">${r.version||'v2.x'}</span></div></div><div class="right"><button class="btn" data-id="${r.id||''}" data-act="load">Abrir</button><button class="btn" data-id="${r.id||''}" data-act="dup">Duplicar</button><button class="btn danger" data-id="${r.id||''}" data-act="del">Borrar</button></div></div>`; list.appendChild(card); }); box.innerHTML=''; box.appendChild(list); box.querySelectorAll('button').forEach(b=>{ const id=parseInt(b.getAttribute('data-id')||'0',10); const act=b.getAttribute('data-act'); b.addEventListener('click',()=>{ if(act==='load') loadRecipe(id); if(act==='dup'){ loadRecipe(id).then(()=> saveRecipe(true)); } if(act==='del') removeRecipe(id); });}); }
+function scaleByIngredient(name,target){ const ings=readIngredients(); const t=ings.find(i=>i.name===name); if(!t){alert('No encontrado');return;} const s=target/(t.grams||1); for(const i of ings){ i.grams=roundQty((i.grams||0)*s);} writeIngredients(ings); }
+function scaleByTotal(target){ const ings=readIngredients(); const prefs=readPref(); const curr=(ings.reduce((a,b)=>a+(b.grams||0),0)+prefs.reduce((a,b)=>a+(b.flour||0)+(b.water||0)+(b.yeast||0),0))||1; const s=target/curr; for(const i of ings){ i.grams=roundQty((i.grams||0)*s);} for(const p of prefs){ p.flour=roundQty((p.flour||0)*s); p.water=roundQty((p.water||0)*s); p.yeast=roundQty((p.yeast||0)*s);} writeIngredients(ings); writePref(prefs); }
+function scaleByPieces(p,w){ scaleByTotal(p*w); }
+function backupJSONPayload(){ return db.recipes.toArray().then(arr=>JSON.stringify({exportedAt:new Date().toISOString(), recipes:arr},null,2)); }
+async function doBackup(){ const mode=$('#backup-mode').value; if(mode==='off') return; const payload=await backupJSONPayload(); if(mode==='local'){ try{ localStorage.setItem('panisvite_backup', payload);}catch(e){} } else if(mode==='download'){ const blob=new Blob([payload],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup_recetas_panaderia.json'; a.click(); URL.revokeObjectURL(a.href);} }
+let currentLoadedId=null;
+$('#rec-date').value=todayISO();
+document.getElementById('tbl-ingredients').addEventListener('click',e=>{ if(e.target.closest('.btn-del')){ e.target.closest('tr').remove(); refreshMetrics(); }});
+document.getElementById('tbl-pref').addEventListener('click',e=>{ if(e.target.closest('.btn-del-pref')){ e.target.closest('tr').remove(); refreshMetrics(); }});
+document.getElementById('btn-add-ing').addEventListener('click',()=>addIngredientRow());
+document.getElementById('btn-add-pref').addEventListener('click',()=>addPrefRow());
+document.getElementById('btn-save').addEventListener('click',()=>saveRecipe(false));
+document.getElementById('btn-dup').addEventListener('click',()=>saveRecipe(true));
+document.getElementById('btn-clear').addEventListener('click',()=>{ writeIngredients([{name:'Harina',grams:1000,flour:true,waterEq:0},{name:'Agua',grams:700,waterEq:100},{name:'Sal',grams:20,waterEq:0},{name:'Levadura fresca',grams:3,waterEq:0}]); writePref([]); });
+document.getElementById('btn-search').addEventListener('click',search);
+document.getElementById('btn-all').addEventListener('click',async()=>renderResults(await db.recipes.toArray()));
+document.getElementById('q').addEventListener('keydown',e=>{ if(e.key==='Enter') search(); });
+document.getElementById('btn-scale-by-ing').addEventListener('click',()=>{ const name=$('#scale-by-ing').value; const grams=num($('#scale-grams').value||'0'); if(!name||!grams){ alert('Selecciona ingrediente y gramos'); return;} scaleByIngredient(name,grams);});
+document.getElementById('btn-scale-total').addEventListener('click',()=>{ const total=num($('#scale-total').value||'0'); if(!total){ alert('Introduce masa total'); return;} scaleByTotal(total);});
+document.getElementById('btn-scale-pieces').addEventListener('click',()=>{ const pcs=num($('#scale-pcs').value||'0'); const w=num($('#scale-weight').value||'0'); if(!pcs||!w){ alert('Indica piezas y peso'); return;} scaleByPieces(pcs,w);});
+document.getElementById('btn-print').addEventListener('click',()=>window.print());
+document.getElementById('btn-export-json').addEventListener('click',async()=>{ const all=await db.recipes.toArray(); const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),recipes:all},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='recetas_panaderia.json'; a.click(); URL.revokeObjectURL(a.href);});
+document.getElementById('import-json').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{ const data=JSON.parse(text); let items=[]; if(Array.isArray(data)) items=data; else if(Array.isArray(data.recipes)) items=data.recipes; else if(data.recipe) items=[data.recipe]; else items=[data]; await db.recipes.bulkPut(items); alert('Importación completada.'); await search(); }catch(err){ alert('JSON no válido'); }});
+document.getElementById('btn-help').addEventListener('click',()=>alert('Novedades v2.3: redondeos y % panadero en columna'));
+document.getElementById('btn-backup-now').addEventListener('click',async()=>{ const payload=await backupJSONPayload(); const blob=new Blob([payload],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup_recetas_panaderia.json'; a.click(); URL.revokeObjectURL(a.href);});
+function readPref(){ const rows=$$('#tbl-pref tbody tr'); return rows.map(r=>({ name:(r.querySelector('.pref-name')?.value||'').trim(), flour:num((r.querySelector('.pref-flour')?.value||'').trim()), water:num((r.querySelector('.pref-water')?.value||'').trim()), yeast:num((r.querySelector('.pref-yeast')?.value||'').trim()), notes:(r.querySelector('.pref-notes')?.value||'').trim()})).filter(p=>p.name||p.flour||p.water||p.yeast);}
+function clearInit(){ document.getElementById('btn-clear').click(); }
+clearInit(); search(); updateSuggestions();
+</script>
+</body></html>
